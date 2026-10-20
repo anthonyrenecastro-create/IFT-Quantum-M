@@ -24,9 +24,12 @@ async function taskStatus(client: BraketClient, arn: string) {
   return out;
 }
 
-async function readDistribution(s3: S3Client, bucket: string, prefix: string): Promise<Record<string, number>> {
-  const key = `${prefix.replace(/\/$/, '')}/results.json`;
-  const out = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
+async function readDistribution(s3: S3Client, taskArn: string): Promise<Record<string, number>> {
+  // Braket writes results to <prefix>/<taskId>/results.json (proven pattern
+  // from api/braket/status.ts)
+  const taskId = taskArn.split('/').pop();
+  const key = `braket-results/manifold-coherence/${taskId}/results.json`;
+  const out = await s3.send(new GetObjectCommand({ Bucket: RESULTS_BUCKET, Key: key }));
   const text = await out.Body!.transformToString();
   const data = JSON.parse(text);
   const counts: Record<string, number> = {};
@@ -76,8 +79,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       });
     }
     const [nDist, iDist] = await Promise.all([
-      readDistribution(s3, RESULTS_BUCKET, nTask.outputS3KeyPrefix || ''),
-      readDistribution(s3, RESULTS_BUCKET, iTask.outputS3KeyPrefix || ''),
+      readDistribution(s3, noisy),
+      readDistribution(s3, ideal),
     ]);
     // Fidelity proxy: probability mass on the ideal distribution's mode
     const mode = Object.entries(iDist).sort((a, b) => b[1] - a[1])[0]?.[0] || '0000';
