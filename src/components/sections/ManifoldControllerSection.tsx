@@ -22,6 +22,7 @@ interface ManifoldMeasurements {
   twoQubitDepthUnoptimized: number;
   twoQubitDepth: number;
   reductionPct: number;
+  expectedFidelity: number | null;
   meanRicciCurvature: number;
   measuredAt: string;
 }
@@ -60,7 +61,11 @@ export const ManifoldControllerSection: React.FC = () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         nodes: nodes.map((n: any) => ({ id: n.id })),
-        edges: edges.map((e: any) => ({ source: e.source, target: e.target })),
+        edges: edges.map((e: any) => ({
+          source: e.source,
+          target: e.target,
+          errorProbability: (e as any).errorProbability,
+        })),
       }),
     })
       .then(async (r) => {
@@ -192,10 +197,12 @@ export const ManifoldControllerSection: React.FC = () => {
                       {measure.twoQubitDepth} gates
                     </span>
                     <span className="text-[10px] text-slate-400 block mt-0.5">
-                      Measured −{measure.reductionPct}% via live transpiler
+                      {measure.expectedFidelity !== null
+                        ? `Expected fidelity ${(measure.expectedFidelity * 100).toFixed(1)}% (edge error model)`
+                        : 'Expected fidelity: no error model on edges'}
                     </span>
                     <span className="text-[10px] text-slate-500 block mt-1">
-                      Unoptimized: {measure.twoQubitDepthUnoptimized}
+                      Transpiler: −{measure.reductionPct}% ({measure.twoQubitDepthUnoptimized} → {measure.twoQubitDepth})
                     </span>
                   </>
                 ) : (

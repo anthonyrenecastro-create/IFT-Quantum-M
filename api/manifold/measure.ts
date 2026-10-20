@@ -19,7 +19,7 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
 interface GraphNode { id: string; }
-interface GraphEdge { source: string; target: string; }
+interface GraphEdge { source: string; target: string; errorProbability?: number; }
 
 type Gate = { kind: 'ry' | 'rz' | 'cnot'; q: number; q2?: number; angle?: number };
 
@@ -125,6 +125,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const reductionPct = unoptimized > 0 ? ((unoptimized - optimizedCount) / unoptimized) * 100 : 0;
   const meanRicci = formanRicci(nodes, edges);
 
+  // Expected circuit fidelity from the manifold's own edge error model:
+  // F = prod over entangling ops of (1 - p_e). Uses the errorProbability
+  // carried on each edge by generateQuantumManifold — the quantity that
+  // actually differs between fixed and adaptive manifolds.
+  let logFidelity = 0;
+  let edgesWithModel = 0;
+  for (const e of edges) {
+    if (typeof e.errorProbability === 'number' && e.errorProbability >= 0 && e.errorProbability < 1) {
+      // 2 CNOTs per edge block in the naive decomposition
+      logFidelity += 2 * Math.log(1 - e.errorProbability);
+      edgesWithModel++;
+    }
+  }
+  const expectedFidelity = edgesWithModel > 0 ? Math.exp(logFidelity) : null;
+
   return res.status(200).json({
     engine: 'ift-transpiler-live v1',
     qubits: nodes.length,
@@ -132,6 +147,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     twoQubitDepthUnoptimized: unoptimized,
     twoQubitDepth: optimizedCount,
     reductionPct: Math.round(reductionPct * 10) / 10,
+    expectedFidelity: expectedFidelity === null ? null : Math.round(expectedFidelity * 10000) / 10000,
+    edgesWithErrorModel: edgesWithModel,
     meanRicciCurvature: Math.round(meanRicci * 1000) / 1000,
     measuredAt: new Date().toISOString(),
   });
