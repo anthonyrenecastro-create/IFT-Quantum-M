@@ -32,7 +32,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const prompt = `Experiment data (JSON):\n${JSON.stringify(experiment).slice(0, 12000)}\n\nQuestion: ${question}`;
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.8-flash',
+      model: 'gemini-2.5-flash',
       contents: prompt,
       config: { systemInstruction: SYSTEM_PROMPT, maxOutputTokens: 1024 },
     });
@@ -43,6 +43,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const status = err?.status || err?.response?.status || err?.code || 'unknown';
     const msg = (err?.message || 'Gemini request failed.').slice(0, 300);
     console.error('Gemini error:', status, msg);
-    return res.status(500).json({ error: 'Gemini request failed.', diagnostic: `[${status}] ${msg}` });
+    return res.status(500).json({ error: 'Gemini request failed.' });
   }
 }

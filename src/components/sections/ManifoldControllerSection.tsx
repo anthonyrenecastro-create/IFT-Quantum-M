@@ -41,6 +41,11 @@ export const ManifoldControllerSection: React.FC = () => {
               Transitioning continuous dynamical flows into discrete quantum circuits. 
               Information is mapped onto Riemannian geometry where logical qubits correspond to non-contractible homology cycles.
             </p>
+            <div className="mt-3">
+              <span className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-700 text-xs font-mono text-slate-400">
+                Illustrative — model values, not measured
+              </span>
+            </div>
           </div>
 
           {/* Interactive Switch Panel for Adaptive Manifold */}

@@ -43,7 +43,7 @@ export const GeminiAnalystSection: React.FC = () => {
       const result = await askGemini(query, buildExperiment());
       setAnswer(result);
     } catch (e: any) {
-      setError(e?.message || 'Analysis failed.');
+      setError('Analyst unavailable right now — please try again later.');
     } finally {
       setLoading(false);
     }

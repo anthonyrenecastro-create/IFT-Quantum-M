@@ -182,6 +182,9 @@ export const TdaExplorerSection: React.FC = () => {
                       <span className="text-cyan-400 font-semibold">{(selectedVoid.persistence.confidence * 100).toFixed(1)}%</span>
                     </div>
                   </div>
+                  <p className="text-[10px] font-mono text-slate-500 mt-2">
+                    Illustrative — model values, not measured.
+                  </p>
                 </div>
 
               </div>
