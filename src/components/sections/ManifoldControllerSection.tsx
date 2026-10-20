@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'motion/react';
 import { useExperiment } from '../../context/ExperimentContext.tsx';
 import { LorenzAndManifoldCanvas } from '../canvas/LorenzAndManifoldCanvas.tsx';
@@ -12,7 +12,28 @@ import {
   Gauge,
   Layers,
   Sparkles,
+  Loader2,
 } from 'lucide-react';
+
+interface ManifoldMeasurements {
+  engine: string;
+  qubits: number;
+  edges: number;
+  twoQubitDepthUnoptimized: number;
+  twoQubitDepth: number;
+  reductionPct: number;
+  meanRicciCurvature: number;
+  measuredAt: string;
+}
+
+interface CoherenceResult {
+  status: 'pending' | 'complete';
+  effectiveT2Us?: number | null;
+  fidelityRatio?: number;
+  noisyStatus?: string;
+  idealStatus?: string;
+  provenance?: { note: string };
+}
 
 export const ManifoldControllerSection: React.FC = () => {
   const {
@@ -22,6 +43,75 @@ export const ManifoldControllerSection: React.FC = () => {
     nodes,
     edges,
   } = useExperiment();
+
+  // Live empirical measurements (replaces hardcoded illustrative values)
+  const [measure, setMeasure] = useState<ManifoldMeasurements | null>(null);
+  const [measureError, setMeasureError] = useState<string | null>(null);
+  const [coherence, setCoherence] = useState<CoherenceResult | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Measure circuit depth + Ricci curvature whenever the manifold changes
+  useEffect(() => {
+    let cancelled = false;
+    setMeasure(null);
+    setMeasureError(null);
+    fetch('/api/manifold/measure', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        nodes: nodes.map((n: any) => ({ id: n.id })),
+        edges: edges.map((e: any) => ({ source: e.source, target: e.target })),
+      }),
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data: ManifoldMeasurements) => { if (!cancelled) setMeasure(data); })
+      .catch((e) => { if (!cancelled) setMeasureError(e instanceof Error ? e.message : 'measurement failed'); });
+    return () => { cancelled = true; };
+  }, [nodes, edges]);
+
+  // Run the DM1 coherence probe once per manifold mode
+  useEffect(() => {
+    let cancelled = false;
+    if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    setCoherence(null);
+    const angles = nodes.slice(0, 4).map((n: any, i: number) => Math.abs(((n as any).curvature ?? -0.15) + 1) * (i + 1) * 0.5);
+    fetch('/api/manifold/coherence', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ angles, shots: 500 }),
+    })
+      .then(async (r) => {
+        if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((sub: { noisyTaskArn: string; idealTaskArn: string; twoQubitGates: number; gateTimeNs: number }) => {
+        if (cancelled) return;
+        const poll = async () => {
+          try {
+            const r = await fetch(
+              `/api/manifold/coherence-result?noisy=${encodeURIComponent(sub.noisyTaskArn)}&ideal=${encodeURIComponent(sub.idealTaskArn)}&twoQubitGates=${sub.twoQubitGates}&gateTimeNs=${sub.gateTimeNs}`,
+            );
+            const data: CoherenceResult = await r.json();
+            if (cancelled) return;
+            setCoherence(data);
+            if (data.status === 'complete' && pollRef.current) {
+              clearInterval(pollRef.current);
+              pollRef.current = null;
+            }
+          } catch { /* keep polling */ }
+        };
+        poll();
+        pollRef.current = setInterval(poll, 6000);
+      })
+      .catch(() => { if (!cancelled) setCoherence({ status: 'pending' }); });
+    return () => {
+      cancelled = true;
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+    };
+  }, [isAdaptive]);
 
   return (
     <section id="manifold-section" className="py-14 lg:py-20 border-b border-slate-900 bg-slate-950">
@@ -42,8 +132,8 @@ export const ManifoldControllerSection: React.FC = () => {
               Information is mapped onto Riemannian geometry where logical qubits correspond to non-contractible homology cycles.
             </p>
             <div className="mt-3">
-              <span className="px-3 py-1.5 rounded-full bg-slate-900 border border-slate-700 text-xs font-mono text-slate-400">
-                Illustrative — model values, not measured
+              <span className="px-3 py-1.5 rounded-full bg-emerald-950 border border-emerald-800 text-xs font-mono text-emerald-400">
+                Live — measured on this manifold
               </span>
             </div>
           </div>
@@ -85,7 +175,7 @@ export const ManifoldControllerSection: React.FC = () => {
           <div className="lg:col-span-8 flex flex-col gap-4">
             <LorenzAndManifoldCanvas mode="manifold" height="h-[520px]" />
 
-            {/* Manifold Metric Indicators */}
+            {/* Manifold Metric Indicators — LIVE measurements */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl font-mono">
                 <span className="text-[10px] uppercase text-slate-400 block">Topological Genus (g)</span>
@@ -96,31 +186,65 @@ export const ManifoldControllerSection: React.FC = () => {
               </div>
               <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl font-mono">
                 <span className="text-[10px] uppercase text-slate-400 block">Circuit 2-Qubit Depth</span>
-                <span className={`text-base font-semibold ${isAdaptive ? 'text-emerald-400' : 'text-amber-400'}`}>
-                  {configData.circuit_optimization.max_two_qubit_depth} gates
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {isAdaptive ? 'Config target: −70.3% vs baseline' : 'Unoptimized transpilation'}
-                </span>
-                <span className="text-[10px] text-slate-500 block mt-1 italic">Illustrative — no synthesis executed</span>
+                {measure ? (
+                  <>
+                    <span className="text-base font-semibold text-emerald-400">
+                      {measure.twoQubitDepth} gates
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      Measured −{measure.reductionPct}% via live transpiler
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-1">
+                      Unoptimized: {measure.twoQubitDepthUnoptimized}
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm text-slate-500 flex items-center gap-1.5 mt-1">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Measuring…
+                  </span>
+                )}
+                {measureError && <span className="text-[10px] text-red-400 block mt-1">{measureError}</span>}
               </div>
               <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl font-mono">
-                <span className="text-[10px] uppercase text-slate-400 block">Mean Coherence (T₂)</span>
-                <span className="text-base font-semibold text-purple-400">
-                  {isAdaptive ? '96.8 µs' : '38.6 µs'}
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {isAdaptive ? 'Model assumption' : 'Susceptible to phase drift'}
-                </span>
-                <span className="text-[10px] text-slate-500 block mt-1 italic">Illustrative — not measured</span>
+                <span className="text-[10px] uppercase text-slate-400 block">Effective T₂*</span>
+                {coherence?.status === 'complete' && coherence.effectiveT2Us != null ? (
+                  <>
+                    <span className="text-base font-semibold text-purple-400">
+                      {coherence.effectiveT2Us} µs
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      DM1 probe, fidelity ratio {coherence.fidelityRatio}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-1 italic">
+                      Noise-model derived, not hardware T₂
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm text-slate-500 flex items-center gap-1.5 mt-1">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    {coherence?.status === 'pending' ? 'DM1 running…' : 'Probing…'}
+                  </span>
+                )}
               </div>
               <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl font-mono">
-                <span className="text-[10px] uppercase text-slate-400 block">Ricci Curvature (R)</span>
-                <span className="text-base font-semibold text-sky-400">
-                  {isAdaptive ? 'R = -0.15 (Equilibrated)' : 'R = -0.42 (Stress Pinch)'}
-                </span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Riemannian curvature</span>
-                <span className="text-[10px] text-slate-500 block mt-1 italic">Illustrative — model value</span>
+                <span className="text-[10px] uppercase text-slate-400 block">Mean Ricci Curvature</span>
+                {measure ? (
+                  <>
+                    <span className="text-base font-semibold text-sky-400">
+                      R = {measure.meanRicciCurvature}
+                    </span>
+                    <span className="text-[10px] text-slate-400 block mt-0.5">
+                      Forman-Ricci over {measure.edges} edges
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-1">
+                      Computed from live mesh graph
+                    </span>
+                  </>
+                ) : (
+                  <span className="text-sm text-slate-500 flex items-center gap-1.5 mt-1">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" /> Measuring…
+                  </span>
+                )}
               </div>
             </div>
           </div>
@@ -165,9 +289,7 @@ export const ManifoldControllerSection: React.FC = () => {
                 <div className="flex justify-between p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
                   <span className="text-slate-400">Synthesis Engine:</span>
                   <span className="text-purple-400 font-semibold">
-                    {configData.circuit_optimization.engine === 'classiq_ift_synthesis_v4'
-                      ? 'Classiq preset — not connected'
-                      : configData.circuit_optimization.engine}
+                    {measure ? `${measure.engine} (live)` : 'Starting…'}
                   </span>
                 </div>
                 <div className="flex justify-between p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
