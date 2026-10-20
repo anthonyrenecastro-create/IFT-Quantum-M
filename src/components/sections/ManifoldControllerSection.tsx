@@ -100,8 +100,9 @@ export const ManifoldControllerSection: React.FC = () => {
                   {configData.circuit_optimization.max_two_qubit_depth} gates
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {isAdaptive ? '-70.3% gate reduction' : 'Unoptimized transpilation'}
+                  {isAdaptive ? 'Config target: −70.3% vs baseline' : 'Unoptimized transpilation'}
                 </span>
+                <span className="text-[10px] text-slate-500 block mt-1 italic">Illustrative — no synthesis executed</span>
               </div>
               <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl font-mono">
                 <span className="text-[10px] uppercase text-slate-400 block">Mean Coherence (T₂)</span>
@@ -109,8 +110,9 @@ export const ManifoldControllerSection: React.FC = () => {
                   {isAdaptive ? '96.8 µs' : '38.6 µs'}
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">
-                  {isAdaptive ? '+150% decoherence delay' : 'Susceptible to phase drift'}
+                  {isAdaptive ? 'Model assumption' : 'Susceptible to phase drift'}
                 </span>
+                <span className="text-[10px] text-slate-500 block mt-1 italic">Illustrative — not measured</span>
               </div>
               <div className="bg-slate-900/90 border border-slate-800 p-3.5 rounded-xl font-mono">
                 <span className="text-[10px] uppercase text-slate-400 block">Ricci Curvature (R)</span>
@@ -118,6 +120,7 @@ export const ManifoldControllerSection: React.FC = () => {
                   {isAdaptive ? 'R = -0.15 (Equilibrated)' : 'R = -0.42 (Stress Pinch)'}
                 </span>
                 <span className="text-[10px] text-slate-400 block mt-0.5">Riemannian curvature</span>
+                <span className="text-[10px] text-slate-500 block mt-1 italic">Illustrative — model value</span>
               </div>
             </div>
           </div>
@@ -160,9 +163,11 @@ export const ManifoldControllerSection: React.FC = () => {
                   <span className="text-cyan-400 font-semibold">{edges.length} CZ Links</span>
                 </div>
                 <div className="flex justify-between p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
-                  <span className="text-slate-400">Classiq Synthesis Engine:</span>
+                  <span className="text-slate-400">Synthesis Engine:</span>
                   <span className="text-purple-400 font-semibold">
-                    {configData.circuit_optimization.engine}
+                    {configData.circuit_optimization.engine === 'classiq_ift_synthesis_v4'
+                      ? 'Classiq preset — not connected'
+                      : configData.circuit_optimization.engine}
                   </span>
                 </div>
                 <div className="flex justify-between p-2.5 rounded-lg bg-slate-950/70 border border-slate-800/80">
